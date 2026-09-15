@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DipAi Platform</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background-color: #212121; color: #ececec; display: flex; height: 100vh; overflow: hidden; }
+
+    /* Боковая панель */
+    .sidebar {
+      width: 260px; background-color: #171717; display: flex; flex-direction: column;
+      border-right: 1px solid #2f2f2f; transition: transform 0.3s ease; z-index: 10;
+    }
+    .new-chat-btn {
+      margin: 12px; padding: 10px 14px; background: #2f2f2f; color: #fff; border: 1px solid #424242;
+      border-radius: 8px; cursor: pointer; text-align: left; font-weight: 500; display: flex; align-items: center; gap: 8px;
+    }
+    .new-chat-btn:hover { background: #383838; }
+    .chat-list { flex: 1; overflow-y: auto; padding: 0 12px; display: flex; flex-direction: column; gap: 4px; }
+    .chat-item {
+      padding: 10px 12px; border-radius: 8px; cursor: pointer; color: #b4b4b4; font-size: 14px;
+      display: flex; justify-content: space-between; align-items: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .chat-item.active { background: #212121; color: #fff; }
+    .chat-item:hover { background: #2f2f2f; }
+    .delete-chat { color: #8e8e8e; font-size: 12px; display: none; }
+    .chat-item:hover .delete-chat { display: inline; }
+
+    /* Основной экран */
+    .main-content { flex: 1; display: flex; flex-direction: column; height: 100vh; position: relative; }
+    .header {
+      padding: 12px 16px; border-bottom: 1px solid #2f2f2f; display: flex; align-items: center; justify-content: space-between; background-color: #171717;
+    }
+    .toggle-sidebar { background: none; border: none; color: #fff; font-size: 20px; cursor: pointer; display: none; }
+    
+    .chat-container {
+      flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; max-width: 800px; width: 100%; margin: 0 auto;
+    }
+    .message { display: flex; gap: 12px; max-width: 85%; line-height: 1.5; font-size: 15px; }
+    .message.user { align-self: flex-end; flex-direction: row-reverse; }
+    .message.ai { align-self: flex-start; }
+    
+    .avatar { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: bold; flex-shrink: 0; }
+    .user .avatar { background-color: #0084ff; color: #fff; }
+    .ai .avatar { background-color: #10a37f; color: #fff; }
+    
+    .bubble { padding: 12px 16px; border-radius: 18px; word-break: break-word; white-space: pre-wrap; }
+    .user .bubble { background-color: #2f2f2f; color: #fff; border-bottom-right-radius: 4px; }
+    .ai .bubble { background-color: #1e1e1e; color: #ececec; border-bottom-left-radius: 4px; }
+    .status-bubble { font-style: italic; color: #8e8e8e; }
+
+    /* Поле ввода */
+    .input-wrapper { padding: 16px; background-color: #212121; display: flex; justify-content: center; }
+    .input-container { max-width: 800px; width: 100%; background-color: #2f2f2f; border-radius: 24px; display: flex; align-items: center; padding: 6px 12px 6px 18px; }
+    input[type="text"] { flex: 1; background: transparent; border: none; outline: none; color: #fff; font-size: 16px; }
+    
+    .send-btn { background-color: #676767; border: none; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; margin-left: 6px; }
+    .send-btn.active { background-color: #ffffff; }
+    .send-btn svg { width: 16px; height: 16px; fill: #212121; }
+
+    /* Мобильная адаптация */
+    @media (max-width: 768px) {
+      .sidebar { position: absolute; height: 100%; transform: translateX(-100%); }
+      .sidebar.open { transform: translateX(0); }
+      .toggle-sidebar { display: block; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Боковое меню -->
+  <div class="sidebar" id="sidebar">
+    <button class="new-chat-btn" onclick="createNewChat()">➕ Новый чат</button>
+    <div class="chat-list" id="chat-list"></div>
+  </div>
+
+  <!-- Главное окно -->
+  <div class="main-content">
+    <div class="header">
+      <button class="toggle-sidebar" onclick="toggleSidebar()">☰</button>
+      <div style="font-weight: 600;">✨ DipAi</div>
+      <div></div>
+    </div>
+
+    <div class="chat-container" id="chat-container"></div>
+
+    <div class="input-wrapper">
+      <div class="input-container">
+        <input type="text" id="user-input" placeholder="Спросите о чем-нибудь..." oninput="toggleButton()">
+        <button class="send-btn" id="send-btn" onclick="sendMessage()">
+          <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ⚠️ СЮДА ВСТАВЬ ССЫЛКУ СВОЕГО СЕРВЕРА С RAILWAY (например: https://dipai.up.railway.app)
+    const SERVER_URL = "https://ТВОЙ_СЕРВЕР.up.railway.app";
+
+    let chats = JSON.parse(localStorage.getItem("dipai_chats") || "[]");
+    let currentChatId = localStorage.getItem("dipai_current_chat") || null;
+
+    const chatContainer = document.getElementById("chat-container");
+    const chatList = document.getElementById("chat-list");
+    const userInput = document.getElementById("user-input");
+    const sendBtn = document.getElementById("send-btn");
+
+    userInput.addEventListener("keypress", (e) => { if (e.key === "Enter") sendMessage(); });
+
+    function init() {
+      if (chats.length === 0) createNewChat();
+      else if (!currentChatId || !chats.find(c => c.id === currentChatId)) currentChatId = chats[0].id;
+      renderSidebar();
+      renderCurrentChat();
+    }
+
+    function createNewChat() {
+      const newChat = { id: "chat_" + Date.now(), title: "Новый чат", messages: [] };
+      chats.unshift(newChat);
+      currentChatId = newChat.id;
+      saveData();
+      renderSidebar();
+      renderCurrentChat();
+    }
+
+    function selectChat(id) {
+      currentChatId = id;
+      saveData();
+      renderSidebar();
+      renderCurrentChat();
+    }
+
+    function deleteChat(e, id) {
+      e.stopPropagation();
+      chats = chats.filter(c => c.id !== id);
+      if (chats.length === 0) createNewChat();
+      else if (currentChatId === id) currentChatId = chats[0].id;
+      saveData();
+      renderSidebar();
+      renderCurrentChat();
+    }
+
+    function renderSidebar() {
+      chatList.innerHTML = "";
+      chats.forEach(c => {
+        const item = document.createElement("div");
+        item.className = `chat-item ${c.id === currentChatId ? 'active' : ''}`;
+        item.onclick = () => selectChat(c.id);
+        item.innerHTML = `
+          <span>💬 ${escapeHtml(c.title)}</span>
+          <span class="delete-chat" onclick="deleteChat(event, '${c.id}')">✕</span>
+        `;
+        chatList.appendChild(item);
+      });
+    }
+
+    function renderCurrentChat() {
+      const chat = chats.find(c => c.id === currentChatId);
+      chatContainer.innerHTML = "";
+
+      if (!chat || chat.messages.length === 0) {
+        chatContainer.innerHTML = `
+          <div class="message ai">
+            <div class="avatar">AI</div>
+            <div class="bubble">Привет, Денис! Я DipAi. Задавай любые вопросы!</div>
+          </div>`;
+        return;
+      }
+
+      chat.messages.forEach(m => {
+        const isUser = m.role === "user";
+        chatContainer.innerHTML += `
+          <div class="message ${isUser ? 'user' : 'ai'}">
+            <div class="avatar">${isUser ? 'Д' : 'AI'}</div>
+            <div class="bubble">${escapeHtml(m.content)}</div>
+          </div>`;
+      });
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    async function sendMessage() {
+      const text = userInput.value.trim();
+      if (!text) return;
+
+      const chat = chats.find(c => c.id === currentChatId);
+      if (!chat) return;
+
+      // Авто-название чата по первому вопросу
+      if (chat.messages.length === 0) {
+        chat.title = text.length > 20 ? text.substring(0, 20) + "..." : text;
+        renderSidebar();
+      }
+
+      chat.messages.push({ role: "user", content: text });
+      saveData();
+      renderCurrentChat();
+
+      userInput.value = "";
+      toggleButton();
+
+      // Статус ожидания
+      const statusDiv = document.createElement("div");
+      statusDiv.className = "message ai";
+      statusDiv.innerHTML = `<div class="avatar">AI</div><div class="bubble status-bubble">DipAi готовит ваш ответ ожидайте :)</div>`;
+      chatContainer.appendChild(statusDiv);
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+
+      const timer = setTimeout(() => {
+        const b = statusDiv.querySelector(".status-bubble");
+        if (b) b.innerText = "Ещё чуть-чуть, уже на финишной прямой...";
+      }, 4000);
+
+      try {
+        const response = await fetch(`${SERVER_URL}/api/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages: chat.messages })
+        });
+
+        const data = await response.json();
+        clearTimeout(timer);
+        statusDiv.remove();
+
+        if (data.success) {
+          chat.messages.push({ role: "assistant", content: data.reply });
+        } else {
+          chat.messages.push({ role: "assistant", content: "⚠️ Ошибка сервера: " + data.error });
+        }
+
+        saveData();
+        renderCurrentChat();
+      } catch (err) {
+        clearTimeout(timer);
+        statusDiv.remove();
+        chat.messages.push({ role: "assistant", content: "⚠️ Не удалось связаться с сервером. Проверь ссылку SERVER_URL." });
+        saveData();
+        renderCurrentChat();
+      }
+    }
+
+    function toggleButton() {
+      if (userInput.value.trim() !== "") sendBtn.classList.add("active");
+      else sendBtn.classList.remove("active");
+    }
+
+    function toggleSidebar() {
+      document.getElementById("sidebar").classList.toggle("open");
+    }
+
+    function saveData() {
+      localStorage.setItem("dipai_chats", JSON.stringify(chats));
+      localStorage.setItem("dipai_current_chat", currentChatId);
+    }
+
+    function escapeHtml(t) { return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+
+    init();
+  </script>
+</body>
+</html>
